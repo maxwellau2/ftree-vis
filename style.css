@@ -203,3 +203,98 @@ ul.sources a {
 .analysis-table tr:nth-child(even) {
     background: #f4f4ec;
 }
+
+/* Run All Analysis button */
+#runAllBtn {
+    font-family: "Open Sans", sans-serif;
+    font-size: 0.12in;
+    padding: 3px 12px;
+    cursor: pointer;
+    background: #006;
+    color: #fff;
+    border: 1px solid #004;
+    border-radius: 3px;
+}
+#runAllBtn:hover {
+    background: #008;
+}
+#runAllBtn:disabled {
+    background: #999;
+    cursor: wait;
+}
+
+/* Run All results panel */
+.run-all-panel {
+    position: fixed;
+    right: 0.1in;
+    bottom: 0.1in;
+    width: 4.5in;
+    max-height: 70vh;
+    overflow-y: auto;
+    background: #fafaf4;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 0.1in 0.15in;
+    font-size: 0.11in;
+    font-family: "Open Sans", sans-serif;
+    z-index: 20;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+.run-all-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 4px;
+    margin-bottom: 6px;
+}
+.run-all-close {
+    font-size: 18px;
+    cursor: pointer;
+    color: #666;
+    padding: 0 4px;
+    line-height: 1;
+}
+.run-all-close:hover {
+    color: #c00;
+}
+.run-all-desc {
+    font-size: 0.1in;
+    color: #666;
+    margin: 0 0 6px 0;
+    line-height: 1.4;
+}
+
+/* Collapsible topology sections */
+.run-all-topo {
+    margin-bottom: 4px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    background: #fff;
+}
+.run-all-topo summary {
+    padding: 4px 8px;
+    cursor: pointer;
+    background: #eee;
+    font-size: 0.11in;
+    border-radius: 3px;
+}
+.run-all-topo summary:hover {
+    background: #e0e0d8;
+}
+.run-all-topo[open] summary {
+    border-bottom: 1px solid #ddd;
+    border-radius: 3px 3px 0 0;
+}
+.run-all-pre {
+    margin: 0;
+    padding: 6px 10px;
+    font-family: monospace;
+    font-size: 10px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: #fcfcf8;
+    max-height: 300px;
+    overflow-y: auto;
+}

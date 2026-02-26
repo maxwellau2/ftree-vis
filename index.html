@@ -53,11 +53,27 @@
                 </ul>
             </form>
             <div class="comment">DC Network Topology Visualizer</div>
+            <div style="text-align:center;margin-top:0.08in;">
+                <button id="runAllBtn" onclick="runAllAnalysis()">Run All Analysis</button>
+            </div>
         </div>
 
         <div class="analysis" id="analysisPanel">
             <h3>Analysis</h3>
             <div id="analysisContent"></div>
+        </div>
+
+        <div class="run-all-panel" id="runAllPanel" style="display:none;">
+            <div class="run-all-header">
+                <h3 style="display:inline;margin:0;">All Topologies Analysis</h3>
+                <span class="run-all-close" onclick="document.getElementById('runAllPanel').style.display='none'">&times;</span>
+            </div>
+            <p class="run-all-desc">
+                Runs BFS path counting, bisection bandwidth, fault tolerance,
+                multi-failure cascade, all-pairs statistics, and cost efficiency
+                across all 5 topologies (Fat Tree k=2, k=4, Jupiter, Amazon, Meta).
+            </p>
+            <div id="runAllContent"></div>
         </div>
 
         <script
@@ -94,6 +110,11 @@
             language="javascript"
             type="text/javascript"
             src="topologies/meta.js"
+        ></script>
+        <script
+            language="javascript"
+            type="text/javascript"
+            src="run-all.js"
         ></script>
     </body>
 </html>
