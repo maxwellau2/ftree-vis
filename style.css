@@ -1,56 +1,169 @@
 @import url(http://fonts.googleapis.com/css?family=Open+Sans:300italic,400italic,300,400);
 
-body, form input[type="text"] {
+body,
+form input[type="text"],
+form select {
     font-family: "Open Sans", sans-serif;
 }
 
-.pod { fill: #005; }
-.cable { stroke: #999; stroke-width: 1px; }
-.host { fill: #500; }
+.pod {
+    fill: #005;
+}
+.cable {
+    stroke: #999;
+    stroke-width: 1px;
+}
+.host {
+    fill: #500;
+}
 
-svg.main { display: block; margin: auto; z-index: -1; }
+/* New topology switch styles */
+.spine-switch {
+    fill: #006;
+}
+.agg-switch {
+    fill: #060;
+}
+.fabric-switch {
+    fill: #606;
+}
+.ocs-switch {
+    fill: #c60;
+    stroke: #960;
+    stroke-width: 1px;
+}
+.ocs-cable {
+    stroke: #c90;
+    stroke-width: 0.8px;
+    stroke-dasharray: 3, 2;
+}
+
+/* Block/pod backgrounds */
+.block-bg {
+    fill: #f5f5f5;
+    stroke: #ccc;
+    stroke-width: 1px;
+}
+.block-label {
+    font-size: 10px;
+    fill: #666;
+    font-weight: bold;
+}
+.layer-label {
+    font-size: 9px;
+    fill: #999;
+}
+
+/* Node labels */
+.node-label {
+    font-size: 7px;
+    fill: #333;
+}
+.switch-label {
+    fill: #006;
+}
+.host-label {
+    fill: #500;
+}
+
+svg.main {
+    display: block;
+    margin: auto;
+    z-index: -1;
+}
 
 div.control {
     position: absolute;
-    right: .1in;
-    left: .1in;
-    width: 2in;
-    padding-top: .1in;
-    padding-bottom: .1in;
-    padding-left: .15in;
-    margin-right: .1in;
+    right: 0.1in;
+    top: 0.1in;
+    width: 2.2in;
+    padding-top: 0.1in;
+    padding-bottom: 0.1in;
+    padding-left: 0.15in;
     background: #eee;
-    font-size: .13in;
+    font-size: 0.13in;
+    z-index: 10;
 }
 
 form ul {
-    list-style-type:none;
-    margin: .1in;
+    list-style-type: none;
+    margin: 0.1in;
     padding: 0;
 }
 
 form ul li {
     margin-left: 1in;
-    padding-bottom: .01in;
-    line-height: .23in;
+    padding-bottom: 0.01in;
+    line-height: 0.23in;
 }
 
 form input[type="text"] {
-    width: .3in;
+    width: 0.3in;
     border: 1px solid #ccc;
-    font-size: .13in;
+    font-size: 0.13in;
+}
+
+form select {
+    width: 1in;
+    border: 1px solid #ccc;
+    font-size: 0.12in;
 }
 
 form span.f {
     margin-left: -1.1in;
     width: 1in;
     text-align: right;
-    padding-right: .05in;
+    padding-right: 0.05in;
     float: left;
 }
 
-a { text-decoration: none; }
-a:hover { text-decoration: underline; }
-div.comment { color: #666; text-align: center; margin-right: .1in; }
-div.comment a { color: #66c; }
+a {
+    text-decoration: none;
+}
+a:hover {
+    text-decoration: underline;
+}
+div.comment {
+    color: #666;
+    text-align: center;
+    margin-right: 0.1in;
+}
+div.comment a {
+    color: #66c;
+}
 
+/* Analysis panel */
+div.analysis {
+    position: absolute;
+    left: 0.1in;
+    top: 0.1in;
+    width: 3.2in;
+    padding: 0.1in 0.15in;
+    background: #f8f8f0;
+    border: 1px solid #ddd;
+    font-size: 0.12in;
+    z-index: 10;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+div.analysis h3 {
+    margin: 0 0 0.05in 0;
+    font-size: 0.15in;
+    color: #333;
+}
+
+div.analysis h4 {
+    margin: 0.08in 0 0.03in 0;
+    font-size: 0.12in;
+    color: #555;
+}
+
+div.analysis p {
+    margin: 0.02in 0;
+    line-height: 1.4;
+}
+
+div.analysis strong {
+    color: #006;
+}

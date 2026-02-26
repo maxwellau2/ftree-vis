@@ -1,32 +1,99 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-<head>
-<meta charset="utf-8">
-<link href="style.css" rel="stylesheet" type="text/css" media="screen">
-<title>Fat Tree Visualizer</title>
-</head>
+    <head>
+        <meta charset="utf-8" />
+        <link
+            href="style.css"
+            rel="stylesheet"
+            type="text/css"
+            media="screen"
+        />
+        <title>Data Center Network Topology Visualizer</title>
+    </head>
 
-<body>
+    <body>
+        <div class="control">
+            <form>
+                <ul>
+                    <li>
+                        <span class="f">Topology</span>
+                        <select name="topology" id="topoSelect">
+                            <option value="fattree">Fat Tree</option>
+                            <option value="jupiter">Google Jupiter</option>
+                            <option value="amazon">Amazon Leaf-Spine</option>
+                            <option value="meta">Meta 3-Level Clos</option>
+                        </select>
+                    </li>
+                    <li class="fattree-param">
+                        <span class="f">Tree Depth</span>
+                        <input type="text" name="depth" value="3" />
+                    </li>
+                    <li class="fattree-param">
+                        <span class="f">Ports per Switch</span>
+                        <input type="text" name="width" value="16" />
+                    </li>
+                    <li>
+                        <span class="f">Hosts</span> <span id="nhost"></span>
+                    </li>
+                    <li>
+                        <span class="f">Switches</span>
+                        <span id="nswitch"></span>
+                    </li>
+                    <li>
+                        <span class="f">Cables</span> <span id="ncable"></span>
+                    </li>
+                    <li>
+                        <span class="f">Transmitters</span>
+                        <span id="ntx"></span>
+                    </li>
+                    <li>
+                        <span class="f">Switch Tx's</span>
+                        <span id="nswtx"></span>
+                    </li>
+                </ul>
+            </form>
+            <div class="comment">DC Network Topology Visualizer</div>
+        </div>
 
-<div class="control">
-    <form>
-        <ul>
-            <li><span class="f">Tree Depth</span> <input type="text" name="depth" value="3"/></li>
-            <li><span class="f">Ports per Switch</span> <input type="text" name="width" value="16"/></li>
-            <li><span class="f">Hosts</span> <span id="nhost"></span></li>
-            <li><span class="f">Switches</span> <span id="nswitch"></span></li>
-            <li><span class="f">Cables</span> <span id="ncable"></span></li>
-            <li><span class="f">Transmitters</span> <span id="ntx"></span></li>
-            <li><span class="f">Switch Tx's</span> <span id="nswtx"></span></li>
-        </ul>
-    </form>
-    <div class="comment">Fat Tree Visualizer <br/> by <a href="http://cseweb.ucsd.edu/~h8liu">He "Lonnie" Liu</a></div>
-</div>
+        <div class="analysis" id="analysisPanel">
+            <h3>Analysis</h3>
+            <div id="analysisContent"></div>
+        </div>
 
-<script language="javascript" type="text/javascript" src="lib/jquery.js"></script>
-<script language="javascript" type="text/javascript" src="lib/d3.js"></script>
-<script language="javascript" type="text/javascript" src="ftree.js"></script>
-
-</body>
-
+        <script
+            language="javascript"
+            type="text/javascript"
+            src="lib/jquery.js"
+        ></script>
+        <script
+            language="javascript"
+            type="text/javascript"
+            src="lib/d3.js"
+        ></script>
+        <script
+            language="javascript"
+            type="text/javascript"
+            src="analysis.js"
+        ></script>
+        <script
+            language="javascript"
+            type="text/javascript"
+            src="ftree.js"
+        ></script>
+        <script
+            language="javascript"
+            type="text/javascript"
+            src="topologies/jupiter.js"
+        ></script>
+        <script
+            language="javascript"
+            type="text/javascript"
+            src="topologies/amazon.js"
+        ></script>
+        <script
+            language="javascript"
+            type="text/javascript"
+            src="topologies/meta.js"
+        ></script>
+    </body>
 </html>
