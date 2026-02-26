@@ -66,8 +66,9 @@ We count shortest paths using BFS: from source $s$, maintain $\mathrm{dist}(v)$ 
 For paths through switch $w$, the \emph{product principle} applies: if $\mathrm{dist}(s,w)+\mathrm{dist}(w,t)=\mathrm{dist}(s,t)$, then paths through $w$ $= \mathrm{count}(s \!\to\! w) \times \mathrm{count}(w \!\to\! t)$.
 
 \subsection{Bisection Bandwidth}
-For fat trees: $B = k^{d-1} \times k = k^d$ (each of $k^{d-1}$ root switches has $k$ links per side).
-For other topologies: we enumerate all balanced host-group partitions via bitmask (feasible for $\leq$20 groups), greedily assign switches to minimise crossing links, and return the minimum.
+We assume 10\,Gbps per link (standard DC access speed).
+For fat trees: $B = k^d \times 10$ Gbps (each of $k^{d-1}$ root switches has $k$ links per side).
+For other topologies: we enumerate all balanced host-group partitions via bitmask (feasible for $\leq$20 groups), greedily assign switches to minimise crossing links, and return the minimum cut $\times\,10$\,Gbps.
 
 \subsection{Fault Tolerance Analysis}
 We remove the most critical switch (a root/spine switch) and re-run BFS on the reduced graph. We measure: (i)~host pairs that lose all shortest paths, (ii)~average path-count reduction, and (iii)~oversubscription ratio (downlinks/uplinks at the edge layer).
@@ -87,26 +88,17 @@ Each server has exactly \textbf{1} shortest path to each individual root switch 
 
 \subsection{Part (b): Host-to-Host Paths}
 
-\begin{table}[h]
-\centering\small
-\caption{Path analysis for the given $k{=}2$, $d{=}3$ fat tree diagram.}
-\label{tab:given}
-\begin{tabular}{@{}lccp{5.5cm}@{}}
-\toprule
-\textbf{Pair} & \textbf{Paths} & \textbf{Len.} & \textbf{Explanation} \\
-\midrule
-M1 $\to$ M3 & 2 & 4 & Different edge switches, same pod. Up through 1 of 2 level-1 switches, down through the destination edge switch: $2$ paths. \\
-M1 $\to$ M5 & 4 & 6 & Different pods. Must traverse root: up 3 levels, down 3 levels. At the root level $k{=}2$ choices, giving $2^2{=}4$ paths. \\
-M1 $\to$ M5 via S2 & 1 & 6 & S2 is one of 4 root switches. Exactly 1 of the 4 paths passes through S2. By product principle: $\mathrm{count}(M1 \!\to\! S2) \times \mathrm{count}(S2 \!\to\! M5) = 1 \times 1 = 1$. \\
-\bottomrule
-\end{tabular}
-\end{table}
+\noindent\textbf{M1 $\to$ M3:} \textbf{2} paths (length 4). Same pod, different edge switches; 2 level-1 switches provide 2 disjoint up--down paths.
+
+\noindent\textbf{M1 $\to$ M5:} \textbf{4} paths (length 6). Different pods; must traverse root level. $2$ choices at level-1 $\times$ $2$ choices at root $= 2^2 = 4$.
+
+\noindent\textbf{M1 $\to$ M5 via S2:} \textbf{1} path.  S2 is one of 4 root switches. By product principle: $\mathrm{count}(M1 \!\to\! S2) \times \mathrm{count}(S2 \!\to\! M5) = 1 \times 1 = 1$.
 
 \subsection{Part (c): Bisection Bandwidth}
 \[
-  B = k^d = 2^3 = \mathbf{8} \text{ link-units}
+  B = k^d \times 10 = 2^3 \times 10 = \mathbf{80} \text{ Gbps}
 \]
-The minimum cut is at the root level: 4 root switches $\times$ 2 links each crossing the bisection.
+The minimum cut is at the root level: 4 root switches $\times$ 2 links each $\times$ 10\,Gbps.
 
 % ============================================================
 \section{Extension to Other Topologies (Part d)}
@@ -114,7 +106,7 @@ The minimum cut is at the root level: 4 root switches $\times$ 2 links each cros
 
 We repeat parts (a)--(c) for three production-inspired topologies and a scaled fat tree ($k{=}4$).
 
-\begin{table}[h]
+\begin{table}[ht!]
 \centering\small
 \caption{Topology parameters for the extended analysis.}
 \label{tab:params}
@@ -133,32 +125,32 @@ Oversubscription & 1:1                 & 1:1          & 0.50:1       & 1:1 \\
 
 \textbf{(a)} \textbf{1} path to each root switch (length 3); 16 root switches total.
 \textbf{(b)} M1$\to$M3 (same edge switch): \textbf{1} path (len 2). M1$\to$M5 (same pod, different edge): \textbf{4} paths (len 4). M1$\to$M5 through S2: \textbf{0}---S2 is a root switch, but same-pod traffic does not traverse the root level.
-\textbf{(c)} Bisection BW $= k^d = 4^3 = \mathbf{64}$ link-units.
+\textbf{(c)} Bisection BW $= k^d \times 10 = 4^3 \times 10 = \mathbf{640}$ Gbps.
 
 \subsection{Google Jupiter}
 4 aggregation blocks, 4 OCS, 2 agg + 4 ToR per block, 2 hosts/ToR (32 hosts).
 
 \textbf{(a)} M1$\to$S1 (OCS): \textbf{2} paths (length 3)---M1's ToR connects to 2 agg switches, each connects to the OCS.
 \textbf{(b)} M1$\to$M3 (same block, different ToR): \textbf{2} paths (len 4, via 2 agg switches). M1$\to$M5 (same block, same ToR): \textbf{2} paths (len 4). M1$\to$M9 (inter-block): \textbf{16} paths (len 6)---$2 \text{ agg}_\text{src} \times 4 \text{ OCS} \times 2 \text{ agg}_\text{dst} = 16$. Through S2: $\mathbf{4}$ paths.
-\textbf{(c)} Bisection BW $= \mathbf{16}$ link-units (exact balanced-partition enumeration; no closed-form---topology is not a regular fat tree).
+\textbf{(c)} Bisection BW $= 16 \times 10 = \mathbf{160}$ Gbps (exact balanced-partition enumeration).
 
 \subsection{Amazon Leaf-Spine}
 4 spine, 8 leaf switches, full bipartite mesh, 2 hosts/leaf (16 hosts).
 
 \textbf{(a)} M1$\to$S1 (spine): \textbf{1} path (length 2)---each host has a single parent leaf.
 \textbf{(b)} M1$\to$M3 (different leaf): \textbf{4} paths (len 4, via 4 spines). M1$\to$M2 (same leaf): 1 path (len 2). M1$\to$M5 through S2: \textbf{1} path---each spine carries exactly $1/4$ of traffic.
-\textbf{(c)} Bisection BW $= \mathbf{8}$ link-units (exact balanced-partition enumeration).
+\textbf{(c)} Bisection BW $= 8 \times 10 = \mathbf{80}$ Gbps (exact balanced-partition enumeration).
 
 \subsection{Meta 3-Level Clos}
 4 spine, 4 pods (2 fabric + 4 ToR each), 2 hosts/ToR (32 hosts).
 
 \textbf{(a)} M1$\to$S1 (spine): \textbf{2} paths (length 3)---2 fabric switches per pod.
 \textbf{(b)} M1$\to$M3 (same pod, different ToR): \textbf{2} paths (len 4, via 2 fabric). M1$\to$M9 (inter-pod): \textbf{16} paths (len 6)---$2 \text{ fabric}_\text{src} \times 4 \text{ spine} \times 2 \text{ fabric}_\text{dst} = 16$. Through S2: $\mathbf{4}$ paths. M1$\to$M5 (same pod) through S2: \textbf{0} paths---intra-pod traffic stays local.
-\textbf{(c)} Bisection BW $= \mathbf{16}$ link-units (exact enumeration).
+\textbf{(c)} Bisection BW $= 16 \times 10 = \mathbf{160}$ Gbps (exact enumeration).
 
 \subsection{Cross-Topology Summary (Parts a--c)}
 
-\begin{table}[h]
+\begin{table}[ht!]
 \centering\small
 \caption{Summary of parts (a)--(c) across all topologies (BFS-computed).}
 \label{tab:comparison}
@@ -170,7 +162,7 @@ Oversubscription & 1:1                 & 1:1          & 0.50:1       & 1:1 \\
 (a) Paths to root      & 4$\times$1   & 16$\times$1  & 4$\times$2  & 4$\times$1  & 4$\times$2 \\
 (b) Cross-group paths  & 4   & 4\textsuperscript{$\dagger$}  & 16  & 4  & 16 \\
 (b) Paths via 1 root   & 1   & 0\textsuperscript{$\dagger$}   & 4  & 1  & 4 \\
-(c) Bisection BW       & 8   & 64  & 16 & 8 & 16 \\
+(c) Bisection BW (Gbps) & 80  & 640 & 160 & 80 & 160 \\
 Oversubscription        & 1:1  & 1:1  & 1:1 & 0.50:1 & 1:1 \\
 Traffic locality         & No   & No   & Yes & No  & Yes \\
 \bottomrule
@@ -187,7 +179,7 @@ We go beyond parts (a)--(c) with three experiments that reveal insights not obta
 \subsection{Experiment 1: Multi-Failure Cascade}
 We progressively remove 1, 2, \ldots, $N$ root/spine switches and measure path survival (fraction of original shortest-path count that remains) across all host pairs.
 
-\begin{table}[h]
+\begin{table}[ht!]
 \centering\small
 \caption{Path survival (\%) under progressive root-switch failures.}
 \label{tab:cascade}
@@ -208,7 +200,7 @@ We progressively remove 1, 2, \ldots, $N$ root/spine switches and measure path s
 
 \subsection{Experiment 2: Network Diameter and Path Diversity}
 
-\begin{table}[h]
+\begin{table}[ht!]
 \centering\small
 \caption{All-pairs shortest-path statistics (computed by BFS over all host pairs).}
 \label{tab:stats}
@@ -229,7 +221,7 @@ Avg paths per pair      & 13.00 & 12.81 & 3.80 & 12.81 \\
 \subsection{Experiment 3: Cost Efficiency}
 We define two efficiency metrics: \emph{avg paths per switch} (path diversity per unit of switch hardware) and \emph{bisection BW per link} (bandwidth per unit of cabling).
 
-\begin{table}[h]
+\begin{table}[ht!]
 \centering\small
 \caption{Cost-efficiency metrics.}
 \label{tab:cost}
@@ -264,13 +256,13 @@ This project used \textbf{Claude Code} (Anthropic's Claude Opus 4.6) as an AI co
 % ============================================================
 
 \paragraph{Key findings.}
-(1)~For the given $k{=}2$, $d{=}3$ diagram: 1 path per root switch (4 roots), 2 M1$\to$M3 paths, 4 M1$\to$M5 paths (1 via S2), bisection BW of 8.
+(1)~For the given $k{=}2$, $d{=}3$ diagram: 1 path per root switch (4 roots), 2 M1$\to$M3 paths, 4 M1$\to$M5 paths (1 via S2), bisection BW of 80\,Gbps.
 (2)~Multi-failure cascade shows the fat tree retains 79.5\% survival at 4 root failures, while Jupiter/Meta drop to 18.2\% and Amazon to 6.7\%---locality protects intra-pod pairs but inter-group traffic disconnects.
 (3)~Amazon's 2-tier design has the lowest diameter (4) and avg distance (3.87) but only 3.80 paths/pair and 0.50:1 oversubscription.
 (4)~Jupiter and Meta produce identical graph-theoretic metrics (avgDist=5.48, avgPaths=12.81) despite different architectures---the choice between them is operational (OCS reconfigurability vs.\ pod isolation), not topological.
 
 \paragraph{Limitations.}
-All links are treated as equal bandwidth (1 link-unit). In practice, spine links run at higher speeds and Jupiter's OCS dynamically reconfigures bandwidth. Our exact bisection algorithm is exponential in host groups; for $>$20 groups the code falls back to a spatial heuristic.
+All links are assumed to be 10\,Gbps. In practice, spine links run at higher speeds (40/100\,Gbps) and Jupiter's OCS dynamically reconfigures bandwidth. Our exact bisection algorithm is exponential in host groups; for $>$20 groups the code falls back to a spatial heuristic.
 
 The source code is in the appendix and runs live in the browser. The original visualizer is at \url{https://github.com/h8liu/ftree-vis}.
 
