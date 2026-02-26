@@ -59,7 +59,7 @@ Three hyperscale operators have published detailed accounts of their production 
   \item \textbf{Meta (Facebook)}~\cite{meta2014,meta2019}: a 3-level Clos with spine, fabric, and ToR layers organised into pods, running standard BGP4.
 \end{itemize}
 
-The open-source \emph{Fat Tree Visualizer}\footnote{\url{https://github.com/h8liu/ftree-vis}} provides an interactive tool for exploring these topologies. In this assignment we extend the visualizer with three additional topology modules (Jupiter, Amazon, Meta), a BFS-based path analysis engine, and an exact bisection bandwidth algorithm, then use the tool to answer each sub-question of Question~5.
+The open-source \emph{Fat Tree Visualizer} by H.~Liu~\cite{ftreevis} provides an interactive tool for exploring fat tree topologies. In this assignment we fork the visualizer and extend it with three additional topology modules (Jupiter, Amazon, Meta), a BFS-based path analysis engine, and an exact bisection bandwidth algorithm, then use the tool to answer each sub-question of Question~5.
 
 % ============================================================
 \section{Solution Methodology}
@@ -283,10 +283,14 @@ We extended the Fat Tree Visualizer with three production-inspired datacenter to
   \item AI copilots proved effective for code auditing and bug detection when given precise, scoped prompts, but required human verification of their reasoning.
 \end{itemize}
 
-The full source code is available as an appendix and at \url{https://github.com/h8liu/ftree-vis}.
+The full source code is available as an appendix. The original visualizer is at \url{https://github.com/h8liu/ftree-vis}; our extended fork with the analysis engine and additional topologies accompanies this submission.
 
 % ============================================================
 \begin{thebibliography}{9}
+
+\bibitem{ftreevis}
+H.~Liu, ``Fat Tree Visualizer,'' GitHub repository.
+\url{https://github.com/h8liu/ftree-vis}
 
 \bibitem{clos1953}
 C.~Clos, ``A study of non-blocking switching networks,''
