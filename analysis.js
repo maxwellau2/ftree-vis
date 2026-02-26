@@ -72,27 +72,169 @@ function computeBisectionBW(graph) {
   return computeGeneralBisection(graph);
 }
 
-// General bisection: partition all nodes by x-coordinate into two halves,
-// count crossing links
+// General bisection: find minimum cut that splits hosts into two equal halves.
+// Groups hosts by their parent switch (ToR/leaf), enumerates balanced partitions
+// of those groups, assigns each non-host node to minimize crossing links,
+// and returns the minimum crossing link count across all balanced partitions.
 function computeGeneralBisection(graph) {
+  var adj = buildAdjacency(graph);
+
+  // Group hosts by their parent switch (first neighbor that is a switch)
+  var hostGroupMap = {}; // groupKey -> [hostId, ...]
+  var hostToGroup = {};
+  var switchSet = {};
+  for (var i = 0; i < graph.switches.length; i++) {
+    switchSet[graph.switches[i].id] = true;
+  }
+  for (var i = 0; i < graph.hosts.length; i++) {
+    var hid = graph.hosts[i].id;
+    var neighbors = adj[hid] || [];
+    var parent = null;
+    for (var j = 0; j < neighbors.length; j++) {
+      if (switchSet[neighbors[j]]) { parent = neighbors[j]; break; }
+    }
+    var key = parent || hid;
+    if (!hostGroupMap[key]) hostGroupMap[key] = [];
+    hostGroupMap[key].push(hid);
+    hostToGroup[hid] = key;
+  }
+
+  var groups = [];
+  var groupSizes = [];
+  for (var key in hostGroupMap) {
+    groups.push(key);
+    groupSizes.push(hostGroupMap[key].length);
+  }
+
+  var totalHosts = graph.hosts.length;
+  var halfHosts = Math.floor(totalHosts / 2);
+
+  // Enumerate all subsets of groups whose total host count = halfHosts
+  // For small group counts (≤20) this is feasible via bitmask
+  var nGroups = groups.length;
+  if (nGroups > 20) {
+    // Too many groups for exact enumeration; fall back to spatial heuristic
+    return computeSpatialBisection(graph);
+  }
+  var bestCut = Infinity;
+
+  for (var mask = 1; mask < (1 << nGroups) - 1; mask++) {
+    // Count hosts in this subset
+    var leftCount = 0;
+    for (var g = 0; g < nGroups; g++) {
+      if (mask & (1 << g)) leftCount += groupSizes[g];
+    }
+    if (leftCount !== halfHosts) continue;
+
+    // Build left set of hosts
+    var leftHosts = {};
+    for (var g = 0; g < nGroups; g++) {
+      if (mask & (1 << g)) {
+        var hlist = hostGroupMap[groups[g]];
+        for (var h = 0; h < hlist.length; h++) leftHosts[hlist[h]] = true;
+      }
+    }
+
+    // Assign each switch to the side that minimizes crossing links.
+    // Count how many edges connect it to left-hosts vs right-hosts (BFS 1-hop).
+    // Then greedily assign switches: for each switch, count edges to already-
+    // assigned left vs right nodes; assign to the side with more connections.
+    // We do multiple passes until stable.
+    var side = {}; // nodeId -> true (left) or false (right)
+    for (var h in leftHosts) side[h] = true;
+    for (var i = 0; i < graph.hosts.length; i++) {
+      if (!leftHosts[graph.hosts[i].id]) side[graph.hosts[i].id] = false;
+    }
+
+    // Iteratively assign switches
+    var changed = true;
+    var maxIter = 10;
+    while (changed && maxIter-- > 0) {
+      changed = false;
+      for (var s = 0; s < graph.switches.length; s++) {
+        var sid = graph.switches[s].id;
+        var neighbors = adj[sid] || [];
+        var leftN = 0, rightN = 0;
+        for (var n = 0; n < neighbors.length; n++) {
+          if (side[neighbors[n]] === true) leftN++;
+          else if (side[neighbors[n]] === false) rightN++;
+        }
+        var newSide = leftN >= rightN;
+        if (side[sid] !== newSide) {
+          side[sid] = newSide;
+          changed = true;
+        }
+      }
+    }
+
+    // Count crossing links
+    var crossLinks = 0;
+    for (var i = 0; i < graph.edges.length; i++) {
+      var e = graph.edges[i];
+      if (side[e.from] !== side[e.to]) crossLinks++;
+    }
+    if (crossLinks < bestCut) bestCut = crossLinks;
+  }
+
+  return bestCut === Infinity ? 0 : bestCut;
+}
+
+// Spatial bisection fallback for topologies with too many host groups
+function computeSpatialBisection(graph) {
   var allNodes = graph.nodes.slice().sort(function (a, b) {
     return a.x - b.x;
   });
   var mid = Math.floor(allNodes.length / 2);
   var leftSet = {};
-
   for (var i = 0; i < mid; i++) leftSet[allNodes[i].id] = true;
-
   var crossLinks = 0;
   for (var i = 0; i < graph.edges.length; i++) {
     var e = graph.edges[i];
-    var fromLeft = !!leftSet[e.from];
-    var toLeft = !!leftSet[e.to];
-    if (fromLeft !== toLeft) {
-      crossLinks++;
-    }
+    if (!!leftSet[e.from] !== !!leftSet[e.to]) crossLinks++;
   }
   return crossLinks;
+}
+
+// Find the first host in a different pod/block/leaf group from srcId.
+// "Group" = hosts sharing the same parent ToR switch.
+// For multi-level topologies (Jupiter, Meta), also checks the block/pod level:
+// find first host whose parent ToR is in a different block/pod.
+function findInterGroupHost(graph, adj, srcId) {
+  var switchSet = {};
+  for (var i = 0; i < graph.switches.length; i++) {
+    switchSet[graph.switches[i].id] = graph.switches[i];
+  }
+
+  // Find the parent ToR of a host
+  function parentTor(hostId) {
+    var neighbors = adj[hostId] || [];
+    for (var j = 0; j < neighbors.length; j++) {
+      if (switchSet[neighbors[j]]) return switchSet[neighbors[j]];
+    }
+    return null;
+  }
+
+  var srcTor = parentTor(srcId);
+  if (!srcTor) return null;
+
+  // For topologies with block/pod attributes, find host in different block/pod
+  var srcGroup = srcTor.block !== undefined ? srcTor.block : (srcTor.pod !== undefined ? srcTor.pod : null);
+
+  for (var i = 0; i < graph.hosts.length; i++) {
+    var hid = graph.hosts[i].id;
+    if (hid === srcId) continue;
+    var hTor = parentTor(hid);
+    if (!hTor) continue;
+
+    if (srcGroup !== null) {
+      var hGroup = hTor.block !== undefined ? hTor.block : (hTor.pod !== undefined ? hTor.pod : null);
+      if (hGroup !== null && hGroup !== srcGroup) return hid;
+    } else {
+      // No block/pod metadata (e.g., leaf-spine): find host under a different ToR
+      if (hTor.id !== srcTor.id) return hid;
+    }
+  }
+  return null;
 }
 
 // Find root/top-level switches for a given topology
@@ -217,6 +359,26 @@ function runAnalysis(graph) {
         throughS2 +
         " path(s)</strong></p>";
     }
+
+    // For topologies with pods/blocks, also show an inter-group pair
+    // to demonstrate cross-pod/block path diversity through spine/OCS
+    var interPairDst = findInterGroupHost(graph, adj, "M1");
+    if (interPairDst) {
+      var interResult = countShortestPaths(adj, "M1", interPairDst);
+      html +=
+        "<p><em>Inter-group example:</em> M1 &rarr; " + interPairDst +
+        ": <strong>" + interResult.count +
+        " path(s)</strong> (length " + interResult.dist + ")</p>";
+
+      // Show paths through S2 for the inter-group pair
+      if (adj["S2"]) {
+        var interThroughS2 = countPathsThroughNode(adj, "M1", interPairDst, "S2");
+        html +=
+          "<p><em>Inter-group:</em> M1 &rarr; " + interPairDst +
+          " through S2: <strong>" + interThroughS2 +
+          " path(s)</strong></p>";
+      }
+    }
   } else if (graph.hosts.length >= 3) {
     var m1m3 = countShortestPaths(adj, "M1", "M3");
     html +=
@@ -253,10 +415,47 @@ function runAnalysis(graph) {
   } else {
     var bw = computeGeneralBisection(graph);
     html +=
-      "<p>Bisection BW &asymp; <strong>" + bw + " link-units</strong></p>";
+      "<p>Bisection BW = <strong>" + bw + " link-units</strong></p>";
     html +=
-      "<p><em>Computed by partitioning nodes into two equal halves (left/right) and counting crossing links.</em></p>";
+      "<p><em>Minimum cut that splits hosts into two equal halves, computed by enumerating balanced partitions of host groups.</em></p>";
+  }
+
+  // ---- Sources ----
+  var sources = topoSources(type);
+  if (sources) {
+    html += "<h4>Sources</h4>" + sources;
   }
 
   panel.html(html);
+}
+
+function topoSources(type) {
+  var s = {
+    fattree:
+      '<ul class="sources">' +
+      '<li>C. Clos, "A Study of Non-Blocking Switching Networks," Bell System Technical Journal, 1953.</li>' +
+      '<li>M. Al-Fares et al., "A Scalable, Commodity Data Center Network Architecture," ACM SIGCOMM 2008.</li>' +
+      "</ul>",
+    jupiter:
+      '<ul class="sources">' +
+      '<li>A. Singh et al., "Jupiter Rising: A Decade of Clos Topologies and Centralized Control in Google\'s Datacenter Network," ACM SIGCOMM 2015. ' +
+      '<a href="https://dl.acm.org/doi/10.1145/2785956.2787508" target="_blank">Paper</a></li>' +
+      '<li>S. Poutievski et al., "Jupiter Evolving: Transforming Google\'s Datacenter Network via Optical Circuit Switches and Software-Defined Networking," ACM SIGCOMM 2022. ' +
+      '<a href="https://research.google/pubs/jupiter-evolving-transforming-googles-datacenter-network-via-optical-circuit-switches-and-software-defined-networking/" target="_blank">Paper</a></li>' +
+      "</ul>",
+    amazon:
+      '<ul class="sources">' +
+      '<li>JR Rivers &amp; S. Callaghan, "Dive deep on AWS networking infrastructure," AWS re:Invent 2022 (NET402). ' +
+      '<a href="https://d1.awsstatic.com/events/Summits/reinvent2022/NET402_Dive-deep-on-AWS-networking-infrastructure.pdf" target="_blank">Slides</a></li>' +
+      '<li>C. Clos, "A Study of Non-Blocking Switching Networks," Bell System Technical Journal, 1953.</li>' +
+      "</ul>",
+    meta:
+      '<ul class="sources">' +
+      '<li>A. Andreyev, "Introducing data center fabric, the next-generation Facebook data center network," Meta Engineering Blog, Nov 2014. ' +
+      '<a href="https://engineering.fb.com/2014/11/14/production-engineering/introducing-data-center-fabric-the-next-generation-facebook-data-center-network/" target="_blank">Blog post</a></li>' +
+      '<li>A. Andreyev et al., "Reinventing Facebook\'s data center network with F16 and Minipack," Meta Engineering Blog, Mar 2019. ' +
+      '<a href="https://engineering.fb.com/2019/03/14/data-center-engineering/f16-minipack/" target="_blank">Blog post</a></li>' +
+      "</ul>",
+  };
+  return s[type] || null;
 }

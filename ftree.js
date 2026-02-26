@@ -215,19 +215,13 @@ function drawFatTree(depth, width) {
     for (var i = 0; i < list.length; i++) {
       var switchNode = switchMap[depth - 1 + "_" + i];
       var switchId = switchNode ? switchNode.id : "S?";
-      if (k == 1) {
-        drawHost(list[i], y, hhost * direction, 0, switchId);
-      } else if (k == 2) {
-        drawHost(list[i], y, hhost * direction, -2, switchId);
-        drawHost(list[i], y, hhost * direction, +2, switchId);
-      } else if (k == 3) {
-        drawHost(list[i], y, hhost * direction, -4, switchId);
-        drawHost(list[i], y, hhost * direction, 0, switchId);
-        drawHost(list[i], y, hhost * direction, +4, switchId);
-      } else {
-        drawHost(list[i], y, hhost * direction, -4, switchId);
-        drawHost(list[i], y, hhost * direction, 0, switchId);
-        drawHost(list[i], y, hhost * direction, +4, switchId);
+      // Draw exactly k hosts per edge switch to match the formula:
+      // total hosts per side = k^(d-1) * k
+      var spacing = k <= 1 ? 0 : 8 / (k - 1);
+      var totalSpan = k <= 1 ? 0 : 8;
+      for (var h = 0; h < k; h++) {
+        var dx = k <= 1 ? 0 : -totalSpan / 2 + h * spacing;
+        drawHost(list[i], y, hhost * direction, dx, switchId);
       }
     }
   }

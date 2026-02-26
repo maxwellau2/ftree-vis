@@ -3,6 +3,16 @@
 // Spine + Pods (each pod has fabric/agg switches + ToR switches)
 // Every fabric switch connects to every spine
 // Every ToR connects to every fabric switch within its pod
+//
+// Sources:
+// - A. Andreyev, "Introducing data center fabric, the next-
+//   generation Facebook data center network," Meta Engineering
+//   Blog, Nov 2014.
+//   https://engineering.fb.com/2014/11/14/production-engineering/introducing-data-center-fabric-the-next-generation-facebook-data-center-network/
+// - A. Andreyev et al., "Reinventing Facebook's data center
+//   network with F16 and Minipack," Meta Engineering Blog,
+//   Mar 2019.
+//   https://engineering.fb.com/2019/03/14/data-center-engineering/f16-minipack/
 // ============================================================
 
 registerTopology('meta', function() {

@@ -167,3 +167,17 @@ div.analysis p {
 div.analysis strong {
     color: #006;
 }
+
+ul.sources {
+    font-size: 0.85em;
+    padding-left: 1.2em;
+    color: #444;
+}
+
+ul.sources li {
+    margin-bottom: 0.3em;
+}
+
+ul.sources a {
+    color: #06c;
+}

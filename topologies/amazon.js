@@ -2,6 +2,13 @@
 // Amazon Leaf-Spine (2-Tier Clos) Topology
 // Classic AWS-style data center fabric
 // Every leaf connects to every spine (full bipartite mesh)
+//
+// Sources:
+// - JR Rivers & S. Callaghan, "Dive deep on AWS networking
+//   infrastructure," AWS re:Invent 2022 (NET402).
+//   https://d1.awsstatic.com/events/Summits/reinvent2022/NET402_Dive-deep-on-AWS-networking-infrastructure.pdf
+// - C. Clos, "A Study of Non-Blocking Switching Networks,"
+//   Bell System Technical Journal, 1953.
 // ============================================================
 
 registerTopology('amazon', function() {

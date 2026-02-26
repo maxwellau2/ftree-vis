@@ -2,6 +2,15 @@
 // Google Jupiter Topology
 // Direct-connect mesh between aggregation blocks via OCS
 // No traditional spine layer - the key Jupiter innovation
+//
+// Sources:
+// - A. Singh et al., "Jupiter Rising: A Decade of Clos Topologies
+//   and Centralized Control in Google's Datacenter Network,"
+//   ACM SIGCOMM 2015. https://dl.acm.org/doi/10.1145/2785956.2787508
+// - S. Poutievski et al., "Jupiter Evolving: Transforming Google's
+//   Datacenter Network via Optical Circuit Switches and Software-
+//   Defined Networking," ACM SIGCOMM 2022.
+//   https://research.google/pubs/jupiter-evolving-transforming-googles-datacenter-network-via-optical-circuit-switches-and-software-defined-networking/
 // ============================================================
 
 registerTopology('jupiter', function() {
