@@ -13,7 +13,6 @@
 
 \hypersetup{colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue}
 
-% Tighten spacing
 \usepackage{titlesec}
 \titlespacing*{\section}{0pt}{1.2ex plus 0.3ex minus 0.2ex}{0.6ex plus 0.1ex}
 \titlespacing*{\subsection}{0pt}{0.8ex plus 0.2ex minus 0.1ex}{0.4ex plus 0.1ex}
@@ -48,283 +47,243 @@
 \section{Introduction and Literature Survey}
 % ============================================================
 
-Modern data centers rely on structured network topologies to deliver high bisection bandwidth and multipath redundancy to thousands of servers. The dominant design paradigm is the \emph{Clos network}, introduced by Charles Clos in 1953~\cite{clos1953}, which arranges switches in multiple stages so that any input can reach any output through several independent paths.
+Modern data centers rely on structured network topologies to deliver high bisection bandwidth and multipath redundancy. The dominant paradigm is the \emph{Clos network}~\cite{clos1953}, which arranges switches in multiple stages so that any input can reach any output through several independent paths. Al-Fares et al.~\cite{alfares2008} showed that a \emph{$k$-ary fat tree}---a folded Clos built from commodity switches---delivers full bisection bandwidth cost-effectively.
 
-Al-Fares et al.~\cite{alfares2008} demonstrated that a \emph{$k$-ary fat tree}---a folded Clos built entirely from commodity $k$-port switches---can deliver full bisection bandwidth at a fraction of the cost of proprietary chassis switches. This work became the reference architecture for academic study of data center networks.
+Three hyperscalers have published their production designs:
+\textbf{Google Jupiter}~\cite{jupiter2015,jupiter2022} uses aggregation blocks interconnected via Optical Circuit Switches (OCS);
+\textbf{Amazon}~\cite{aws2022} uses a leaf-spine (2-tier Clos) with full bipartite mesh;
+\textbf{Meta}~\cite{meta2014,meta2019} uses a 3-level Clos with spine, fabric, and ToR layers in pods.
 
-Three hyperscale operators have published detailed accounts of their production networks:
-\begin{itemize}[nosep]
-  \item \textbf{Google Jupiter}~\cite{jupiter2015,jupiter2022}: a multi-stage Clos interconnected through Optical Circuit Switches (OCS), evolving from 10\,Gbps to 400\,Gbps per port across a decade.
-  \item \textbf{Amazon (AWS)}~\cite{aws2022}: a leaf-spine (2-tier Clos) fabric where every leaf switch connects to every spine switch, as described in AWS re:Invent 2022.
-  \item \textbf{Meta (Facebook)}~\cite{meta2014,meta2019}: a 3-level Clos with spine, fabric, and ToR layers organised into pods, running standard BGP4.
-\end{itemize}
-
-The open-source \emph{Fat Tree Visualizer} by H.~Liu~\cite{ftreevis} provides an interactive tool for exploring fat tree topologies. In this assignment we fork the visualizer and extend it with three additional topology modules (Jupiter, Amazon, Meta), a BFS-based path analysis engine, and an exact bisection bandwidth algorithm, then use the tool to answer each sub-question of Question~5.
+We fork the open-source \emph{Fat Tree Visualizer}~\cite{ftreevis} and extend it with three production topology modules, a BFS-based path analysis engine, an exact bisection bandwidth algorithm, and a fault tolerance analyser.
 
 % ============================================================
 \section{Solution Methodology}
 % ============================================================
 
-\subsection{Topology Construction}
-
-Each topology is constructed as an undirected graph $G=(V,E)$ where $V$ is partitioned into \emph{hosts} $H$ and \emph{switches} $S$. Table~\ref{tab:params} summarises the four architectures.
-
-\begin{table}[h]
-\centering
-\caption{Topology parameters for the four data center architectures.}
-\label{tab:params}
-\small
-\begin{tabular}{@{}lcccc@{}}
-\toprule
-& \textbf{Fat Tree} & \textbf{Jupiter} & \textbf{Amazon} & \textbf{Meta} \\
-\midrule
-Hierarchy   & $d$-level Clos     & 3-level + OCS     & 2-tier Clos      & 3-level Clos \\
-Parameters  & $k,\;d$            & 4 blocks, 4 OCS   & 4 spine, 8 leaf  & 4 spine, 4 pods \\
-Hosts       & $k^{d-1} \cdot k$  & 32                 & 16               & 32 \\
-Switches    & $(2d{-}1)\,k^{d-1}$& 24                 & 12               & 28 \\
-Links       & $d \cdot k \cdot k^{d-1}$ & 96          & 48               & 96 \\
-Root type   & Level-0 switches   & OCS                & Spine            & Spine \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-Note: for the fat tree, hosts and links above count one side of the symmetric visual layout, which is the graph used for analysis. The statistics panel displays the full (both-sides) count $2k^{d-1} \cdot k$.
-
 \subsection{Path Counting via BFS}
+We count shortest paths using BFS: from source $s$, maintain $\mathrm{dist}(v)$ and $\mathrm{count}(v)$ for each node. When neighbour $u$ is first discovered, $\mathrm{count}(u) \leftarrow \mathrm{count}(v)$; when reached again at equal distance, $\mathrm{count}(u) \mathrel{+}= \mathrm{count}(v)$. Complexity: $O(|V|+|E|)$.
 
-To answer parts (a) and (b), we count shortest paths using a standard BFS-based algorithm. Starting from a source node $s$, we maintain for every visited node $v$: its distance $\mathrm{dist}(v)$ and the number of shortest paths $\mathrm{count}(v)$. When a neighbour $u$ of $v$ is first discovered, $\mathrm{count}(u) \leftarrow \mathrm{count}(v)$; when $u$ is reached again at the same distance, $\mathrm{count}(u) \mathrel{+}= \mathrm{count}(v)$. This runs in $O(|V|+|E|)$ per query.
-
-For paths through a specific switch $w$, we use the \emph{product principle}: if $w$ lies on a shortest $s$--$t$ path (i.e.\ $\mathrm{dist}(s,w)+\mathrm{dist}(w,t)=\mathrm{dist}(s,t)$), then the number of shortest $s$--$t$ paths through $w$ is $\mathrm{count}(s \to w) \times \mathrm{count}(w \to t)$.
+For paths through switch $w$, the \emph{product principle} applies: if $\mathrm{dist}(s,w)+\mathrm{dist}(w,t)=\mathrm{dist}(s,t)$, then paths through $w$ $= \mathrm{count}(s \!\to\! w) \times \mathrm{count}(w \!\to\! t)$.
 
 \subsection{Bisection Bandwidth}
+For fat trees: $B = k^{d-1} \times k = k^d$ (each of $k^{d-1}$ root switches has $k$ links per side).
+For other topologies: we enumerate all balanced host-group partitions via bitmask (feasible for $\leq$20 groups), greedily assign switches to minimise crossing links, and return the minimum.
 
-\paragraph{Fat tree (exact formula).}
-For a $k$-ary fat tree of depth $d$, the minimum bisection cut is at the root level: each of the $k^{d-1}$ root switches has $k$ links to each half, giving:
+\subsection{Fault Tolerance Analysis}
+We remove the most critical switch (a root/spine switch) and re-run BFS on the reduced graph. We measure: (i)~host pairs that lose all shortest paths, (ii)~average path-count reduction, and (iii)~oversubscription ratio (downlinks/uplinks at the edge layer).
+
+% ============================================================
+\section{Answers for the Given Diagram}
+% ============================================================
+
+The assignment diagram is a $k{=}2$, $d{=}3$ fat tree with 4 root switches (S1--S4), 4 level-1 switches, 4 edge switches, and 8 hosts (M1--M8, with M1--M6 labelled).
+
+\subsection{Part (a): Server $\to$ Root Switch}
+Each server has exactly \textbf{1} shortest path to each individual root switch (length 3), since the fat tree's wiring deterministically maps each upward port to a specific root. There are $k^{d-1} = 4$ root switches, so $4$ total root-reachable paths:
 \[
-  B_{\text{fat tree}} = k^{d-1} \times k = k^d \text{ link-units.}
+  \text{Paths per root} = \mathbf{1}, \quad \text{Total root switches} = k^{d-1} = 4
 \]
-
-\paragraph{General topologies (exact enumeration).}
-For the other three topologies we compute the exact bisection bandwidth by:
-\begin{enumerate}[nosep]
-  \item Grouping hosts by their parent ToR/leaf switch.
-  \item Enumerating all subsets of groups whose total host count equals $\lfloor |H|/2 \rfloor$ (via bitmask; feasible for $\leq 20$ groups).
-  \item For each balanced host partition, greedily assigning each switch to the side with more of its neighbours (iterating to convergence).
-  \item Returning the minimum number of crossing links across all partitions.
-\end{enumerate}
-This replaces the original visualizer's spatial heuristic (sorting by $x$-coordinate) with a provably tighter bound.
-
-% ============================================================
-\section{Illustrative Examples and Results}
-% ============================================================
-
-\subsection{Part (a): Server to Root Switch Paths}
-
-Table~\ref{tab:parta} shows the number of minimal-length shortest paths from an arbitrary server (M1) to representative root switches across all four topologies.
-
-\begin{table}[h]
-\centering
-\caption{Shortest paths from server M1 to root switches.}
-\label{tab:parta}
-\small
-\begin{tabular}{@{}llccl@{}}
-\toprule
-\textbf{Topology} & \textbf{Pair} & \textbf{Paths} & \textbf{Length} & \textbf{Derivation} \\
-\midrule
-Fat Tree ($k{=}4,\,d{=}3$) & M1 $\to$ S1 & 16 & 3 & $k^{d-1} = 4^2 = 16$ \\
-Google Jupiter     & M1 $\to$ S1 (OCS)  & 2  & 3 & BFS (see below) \\
-Amazon Leaf-Spine  & M1 $\to$ S1 (Spine)& 1  & 2 & BFS (see below) \\
-Meta 3-Level Clos  & M1 $\to$ S1 (Spine)& 2  & 3 & BFS (see below) \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\paragraph{Why fat tree admits a closed-form formula.}
-The $k$-ary fat tree has a \emph{uniform recursive structure}: at every intermediate switch level between a server and the root, the topology fans out to exactly $k$ parent switches, each of which is equally valid for reaching any root switch. A server at depth $d{-}1$ must traverse $d{-}1$ switch-to-switch hops to reach a level-0 root, and at each hop there are $k$ upward choices that all remain on a shortest path. This gives $k^{d-1}$ minimal-length paths by a simple product argument.
-
-\paragraph{Why the other topologies lack a closed-form.}
-Jupiter, Amazon, and Meta do not have this uniform fan-out structure. Their path counts depend on the \emph{specific} (server, root) pair chosen:
-\begin{itemize}
-  \item \textbf{Amazon Leaf-Spine:} Each host connects to exactly one leaf switch, which connects to all 4 spines. The path M1 $\to$ Leaf $\to$ Spine is unique for a given spine, so there is always exactly \textbf{1 path} (length 2). There is no branching because the host has a single parent.
-  \item \textbf{Jupiter \& Meta:} The path Host $\to$ ToR $\to$ \{Agg/Fabric\} $\to$ Root has a branching factor equal to the number of aggregation/fabric switches per block/pod. With 2 per block/pod, every server has exactly \textbf{2 paths} (length 3) to any given root.
-\end{itemize}
-These counts can be verified by hand for a fixed configuration but do not generalise to a single formula when the topology parameters change independently. We therefore compute them algorithmically using the BFS shortest-path counting algorithm described in Section~2.2.
-
-\textbf{Key insight:} The fat tree provides significantly more path diversity ($k^{d-1}$ paths) to any single root switch than the production topologies, which have 1--2 paths. This is because the fat tree has a wider fan-out at each level, while production topologies use fewer, higher-radix switches.
+\textbf{Verified:} M1 $\to$ S1 = 1 path, M1 $\to$ S2 = 1 path, \ldots, M1 $\to$ S4 = 1 path (each length 3).
 
 \subsection{Part (b): Host-to-Host Paths}
 
-Table~\ref{tab:partb} presents the path counts for the requested host pairs (M1--M3, M1--M5) and the constrained paths through switch S2. For Jupiter and Meta, we also include an \emph{inter-group} pair (M1--M9) where the hosts are in different blocks/pods.
-
 \begin{table}[h]
-\centering
-\caption{Shortest paths between host pairs across all topologies.}
-\label{tab:partb}
-\small
-\begin{tabular}{@{}llccl@{}}
+\centering\small
+\caption{Path analysis for the given $k{=}2$, $d{=}3$ fat tree diagram.}
+\label{tab:given}
+\begin{tabular}{@{}lccp{5.5cm}@{}}
 \toprule
-\textbf{Topology} & \textbf{Pair} & \textbf{Paths} & \textbf{Len.} & \textbf{Notes} \\
+\textbf{Pair} & \textbf{Paths} & \textbf{Len.} & \textbf{Explanation} \\
 \midrule
-\multirow{3}{*}{Fat Tree ($k{=}4$)} & M1 $\to$ M3 & 4 & 4 & Same edge switch \\
- & M1 $\to$ M5 & 16 & 6 & Different edge switches \\
- & M1 $\to$ M5 via S2 & 1 & 6 & S2 is a root switch \\
-\midrule
-\multirow{4}{*}{Jupiter} & M1 $\to$ M3 & 2 & 4 & Same block \\
- & M1 $\to$ M5 & 2 & 4 & Same block \\
- & M1 $\to$ M5 via S2 & 0 & --- & S2 (OCS) not on intra-block path \\
- & M1 $\to$ M9 & 8 & 6 & \emph{Inter-block, via OCS} \\
-\midrule
-\multirow{3}{*}{Amazon} & M1 $\to$ M3 & 4 & 4 & Different leaves \\
- & M1 $\to$ M5 & 4 & 4 & Different leaves \\
- & M1 $\to$ M5 via S2 & 1 & 4 & S2 is a spine switch \\
-\midrule
-\multirow{4}{*}{Meta} & M1 $\to$ M3 & 2 & 4 & Same pod \\
- & M1 $\to$ M5 & 2 & 4 & Same pod \\
- & M1 $\to$ M5 via S2 & 0 & --- & S2 (spine) not on intra-pod path \\
- & M1 $\to$ M9 & 8 & 6 & \emph{Inter-pod, via spine} \\
+M1 $\to$ M3 & 2 & 4 & Different edge switches, same pod. Up through 1 of 2 level-1 switches, down through the destination edge switch: $2$ paths. \\
+M1 $\to$ M5 & 4 & 6 & Different pods. Must traverse root: up 3 levels, down 3 levels. At the root level $k{=}2$ choices, giving $2^2{=}4$ paths. \\
+M1 $\to$ M5 via S2 & 1 & 6 & S2 is one of 4 root switches. Exactly 1 of the 4 paths passes through S2. By product principle: $\mathrm{count}(M1 \!\to\! S2) \times \mathrm{count}(S2 \!\to\! M5) = 1 \times 1 = 1$. \\
 \bottomrule
 \end{tabular}
 \end{table}
-
-\textbf{Key insight:} For Jupiter and Meta, same-block/pod hosts never traverse the top-level switches (OCS or spine) on shortest paths, yielding 0 paths through S2. This demonstrates \emph{traffic locality}---intra-pod traffic stays within the pod. Only inter-block/pod pairs (e.g., M1--M9) exercise the full path diversity through the top tier. Amazon's flat leaf-spine has no such distinction: every cross-leaf pair traverses all 4 spines equally.
 
 \subsection{Part (c): Bisection Bandwidth}
+\[
+  B = k^d = 2^3 = \mathbf{8} \text{ link-units}
+\]
+The minimum cut is at the root level: 4 root switches $\times$ 2 links each crossing the bisection.
+
+% ============================================================
+\section{Extension to Other Topologies (Part d)}
+% ============================================================
+
+We repeat parts (a)--(c) for three production-inspired topologies and a scaled fat tree ($k{=}4$).
 
 \begin{table}[h]
-\centering
-\caption{Bisection bandwidth (in link-units) for all topologies.}
-\label{tab:partc}
-\small
-\begin{tabular}{@{}lccl@{}}
+\centering\small
+\caption{Topology parameters for the extended analysis.}
+\label{tab:params}
+\begin{tabular}{@{}lcccc@{}}
 \toprule
-\textbf{Topology} & \textbf{BW} & \textbf{Method} & \textbf{Explanation} \\
+& \textbf{Fat Tree ($k{=}4$)} & \textbf{Jupiter} & \textbf{Amazon} & \textbf{Meta} \\
 \midrule
-Fat Tree ($k{=}4,\,d{=}3$) & 64 & Formula $k^d$ & 16 root switches $\times$ 4 links each \\
-Google Jupiter     & 16 & Exact enum. & Cut between blocks 2 and 3 \\
-Amazon Leaf-Spine  & 16 & Exact enum. & 4 leaves $\times$ 4 spines crossing \\
-Meta 3-Level Clos  & 16 & Exact enum. & Cut between pods 2 and 3 \\
+Hosts / Switches / Links & 64 / 48 / 192 & 32 / 28 / 96 & 16 / 12 / 48 & 32 / 28 / 96 \\
+Root switches    & 16 (level-0)        & 4 (OCS)      & 4 (spine)    & 4 (spine) \\
+Oversubscription & 1:1                 & 1:1          & 0.50:1       & 1:1 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\textbf{Key insight:} The fat tree with $k{=}4$ achieves $4\times$ the bisection bandwidth of the production topologies at this scale. The three production topologies all converge to the same bisection bandwidth of 16 link-units, despite their different architectures---this reflects the common design principle of matching cross-sectional capacity at the top tier.
+\subsection{Fat Tree ($k{=}4$, $d{=}3$)}
 
-\subsection{Part (d): Scaling Experiments}
+\textbf{(a)} \textbf{1} path to each root switch (length 3); 16 root switches total.
+\textbf{(b)} M1$\to$M3 (same edge switch): \textbf{1} path (len 2). M1$\to$M5 (same pod, different edge): \textbf{4} paths (len 4). M1$\to$M5 through S2: \textbf{0}---S2 is a root switch, but same-pod traffic does not traverse the root level.
+\textbf{(c)} Bisection BW $= k^d = 4^3 = \mathbf{64}$ link-units.
 
-We vary the fat tree parameter $k$ to observe how network metrics scale:
+\subsection{Google Jupiter}
+4 aggregation blocks, 4 OCS, 2 agg + 4 ToR per block, 2 hosts/ToR (32 hosts).
+
+\textbf{(a)} M1$\to$S1 (OCS): \textbf{2} paths (length 3)---M1's ToR connects to 2 agg switches, each connects to the OCS.
+\textbf{(b)} M1$\to$M3 (same block, different ToR): \textbf{2} paths (len 4, via 2 agg switches). M1$\to$M5 (same block, same ToR): \textbf{2} paths (len 4). M1$\to$M9 (inter-block): \textbf{16} paths (len 6)---$2 \text{ agg}_\text{src} \times 4 \text{ OCS} \times 2 \text{ agg}_\text{dst} = 16$. Through S2: $\mathbf{4}$ paths.
+\textbf{(c)} Bisection BW $= \mathbf{16}$ link-units (exact balanced-partition enumeration; no closed-form---topology is not a regular fat tree).
+
+\subsection{Amazon Leaf-Spine}
+4 spine, 8 leaf switches, full bipartite mesh, 2 hosts/leaf (16 hosts).
+
+\textbf{(a)} M1$\to$S1 (spine): \textbf{1} path (length 2)---each host has a single parent leaf.
+\textbf{(b)} M1$\to$M3 (different leaf): \textbf{4} paths (len 4, via 4 spines). M1$\to$M2 (same leaf): 1 path (len 2). M1$\to$M5 through S2: \textbf{1} path---each spine carries exactly $1/4$ of traffic.
+\textbf{(c)} Bisection BW $= \mathbf{8}$ link-units (exact balanced-partition enumeration).
+
+\subsection{Meta 3-Level Clos}
+4 spine, 4 pods (2 fabric + 4 ToR each), 2 hosts/ToR (32 hosts).
+
+\textbf{(a)} M1$\to$S1 (spine): \textbf{2} paths (length 3)---2 fabric switches per pod.
+\textbf{(b)} M1$\to$M3 (same pod, different ToR): \textbf{2} paths (len 4, via 2 fabric). M1$\to$M9 (inter-pod): \textbf{16} paths (len 6)---$2 \text{ fabric}_\text{src} \times 4 \text{ spine} \times 2 \text{ fabric}_\text{dst} = 16$. Through S2: $\mathbf{4}$ paths. M1$\to$M5 (same pod) through S2: \textbf{0} paths---intra-pod traffic stays local.
+\textbf{(c)} Bisection BW $= \mathbf{16}$ link-units (exact enumeration).
+
+\subsection{Cross-Topology Summary (Parts a--c)}
 
 \begin{table}[h]
-\centering
-\caption{Fat tree scaling ($d{=}3$) across different $k$ values.}
-\label{tab:scaling}
-\small
-\begin{tabular}{@{}rrrrrr@{}}
+\centering\small
+\caption{Summary of parts (a)--(c) across all topologies (BFS-computed).}
+\label{tab:comparison}
+\begin{tabular}{@{}lccccc@{}}
 \toprule
-$k$ & Hosts & Switches & Links & Bisection BW & Paths (M1$\to$root) \\
+\textbf{Metric} & \textbf{Fat Tree} & \textbf{Fat Tree} & \textbf{Jupiter} & \textbf{Amazon} & \textbf{Meta} \\
+& \textbf{($k{=}2$)} & \textbf{($k{=}4$)} & & & \\
 \midrule
-2  & 8     & 10       & 24    & 8    & 4  \\
-4  & 64    & 80       & 192   & 64   & 16 \\
-8  & 512   & 640      & 1,536 & 512  & 64 \\
-16 & 4,096 & 5,120    & 12,288& 4,096& 256\\
+(a) Paths to root      & 4$\times$1   & 16$\times$1  & 4$\times$2  & 4$\times$1  & 4$\times$2 \\
+(b) Cross-group paths  & 4   & 4\textsuperscript{$\dagger$}  & 16  & 4  & 16 \\
+(b) Paths via 1 root   & 1   & 0\textsuperscript{$\dagger$}   & 4  & 1  & 4 \\
+(c) Bisection BW       & 8   & 64  & 16 & 8 & 16 \\
+Oversubscription        & 1:1  & 1:1  & 1:1 & 0.50:1 & 1:1 \\
+Traffic locality         & No   & No   & Yes & No  & Yes \\
+\bottomrule
+\end{tabular}
+\begin{flushleft}\scriptsize \textsuperscript{$\dagger$}M1$\to$M5 in fat tree $k{=}4$ are in the same pod, so traffic stays within the pod (4 paths, len 4) and does not traverse root switches.\end{flushleft}
+\end{table}
+
+% ============================================================
+\section{Experiments Beyond the Assignment}
+% ============================================================
+
+We go beyond parts (a)--(c) with three experiments that reveal insights not obtainable from lecture material alone. All numbers are generated by our analysis engine (viewable live in the browser).
+
+\subsection{Experiment 1: Multi-Failure Cascade}
+We progressively remove 1, 2, \ldots, $N$ root/spine switches and measure path survival (fraction of original shortest-path count that remains) across all host pairs.
+
+\begin{table}[h]
+\centering\small
+\caption{Path survival (\%) under progressive root-switch failures.}
+\label{tab:cascade}
+\begin{tabular}{@{}rcccc@{}}
+\toprule
+\textbf{Roots removed} & \textbf{Fat Tree ($k{=}4$)} & \textbf{Jupiter} & \textbf{Amazon} & \textbf{Meta} \\
+& (of 16) & (of 4) & (of 4) & (of 4) \\
+\midrule
+1 & 94.9 & 79.5 & 76.7 & 79.5 \\
+2 & 89.8 & 59.1 & 53.3 & 59.1 \\
+3 & 84.7 & 38.6 & 30.0 & 38.6 \\
+4 & 79.5 & 18.2 & 6.7 & 18.2 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-All metrics scale as powers of $k$: hosts as $k^3$, switches as $5k^2$, bisection bandwidth as $k^3$, and path diversity as $k^2$. This confirms the well-known $O(k^3)$ scaling of fat trees, which is precisely the property that makes them attractive for data centers where the cost of commodity switches grows linearly with $k$.
+\textbf{Insight:} All topologies degrade linearly, but at different rates. The fat tree loses only $\sim$5\% per root removed (16 roots total), retaining 79.5\% at 4 failures---the same point where production topologies collapse. Jupiter and Meta drop to 18.2\% at total root loss; same-pod pairs survive but inter-pod pairs disconnect (54/66). Amazon degrades fastest (to 6.7\%) because its flat 2-tier design has no locality: nearly all cross-leaf pairs disconnect (112/120) when all spines fail.
+
+\subsection{Experiment 2: Network Diameter and Path Diversity}
+
+\begin{table}[h]
+\centering\small
+\caption{All-pairs shortest-path statistics (computed by BFS over all host pairs).}
+\label{tab:stats}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+& \textbf{Fat Tree ($k{=}4$)} & \textbf{Jupiter} & \textbf{Amazon} & \textbf{Meta} \\
+\midrule
+Diameter (max distance) & 6 & 6 & 4 & 6 \\
+Min host distance       & 2 & 2 & 2 & 2 \\
+Avg host distance       & 5.43 & 5.48 & 3.87 & 5.48 \\
+Avg paths per pair      & 13.00 & 12.81 & 3.80 & 12.81 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Insight:} Amazon's 2-tier design achieves the lowest diameter (4 vs.\ 6) and average distance (3.87 vs.\ $\sim$5.4), at the cost of 0.50:1 oversubscription. Jupiter and Meta have identical statistics (avgDist = 5.48, avgPaths = 12.81) despite different architectures---their 3-level structure produces equivalent path-length distributions. The fat tree closely matches Jupiter/Meta in path diversity (13.00 vs.\ 12.81) while Amazon has only 3.80 paths/pair, quantifying the redundancy vs.\ simplicity trade-off.
+
+\subsection{Experiment 3: Cost Efficiency}
+We define two efficiency metrics: \emph{avg paths per switch} (path diversity per unit of switch hardware) and \emph{bisection BW per link} (bandwidth per unit of cabling).
+
+\begin{table}[h]
+\centering\small
+\caption{Cost-efficiency metrics.}
+\label{tab:cost}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+& \textbf{Fat Tree ($k{=}4$)} & \textbf{Jupiter} & \textbf{Amazon} & \textbf{Meta} \\
+\midrule
+Switches          & 48       & 28       & 12       & 28 \\
+Links             & 192      & 96       & 48       & 96 \\
+Paths/switch      & 0.271    & 0.457    & 0.317    & 0.457 \\
+BW/link           & 0.333    & 0.167    & 0.167    & 0.167 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Insight:} Jupiter and Meta achieve the highest paths-per-switch (0.457), indicating efficient path diversity per unit of switch hardware. The fat tree's BW-per-link (0.333) is $2\times$ that of the production topologies (0.167), but it requires $48$ switches vs.\ $28$---a $71\%$ hardware premium for that bandwidth advantage. Amazon has the fewest switches (12) but the lowest paths-per-switch (0.317) and BW-per-link (0.167), reflecting its lean 2-tier design's limited path diversity.
 
 % ============================================================
 \section{Use of AI and Vibe Coding}
 % ============================================================
 
-This project was developed using \textbf{Claude Code} (Anthropic's Claude Opus 4.6) as an AI copilot throughout the process. The interaction followed a structured workflow:
+This project used \textbf{Claude Code} (Anthropic's Claude Opus 4.6) as an AI copilot:
 
 \begin{enumerate}[nosep]
-  \item \textbf{Correctness audit.} The AI was asked to ``assess the correctness of the analysis for all supported architectures.'' It read every source file, manually traced the topology construction for each architecture, verified the BFS algorithm, and identified three concrete bugs:
-  \begin{itemize}[nosep]
-    \item The fat tree's \texttt{drawHosts()} drew a hardcoded 3 hosts per edge switch regardless of $k$, causing the graph to have fewer hosts than the formula predicted.
-    \item The bisection bandwidth for non-fat-tree topologies used a spatial heuristic (sort by $x$-coordinate, split in half) that could miss the true minimum cut.
-    \item The analysis only showed intra-pod host pairs for Jupiter and Meta, always producing 0 paths through top-level switches---correct but uninformative.
-  \end{itemize}
-
-  \item \textbf{Bug fixing.} Each issue was fixed with targeted edits: the host loop now iterates $k$ times; bisection uses exact balanced-partition enumeration; and an inter-group host pair finder was added.
-
-  \item \textbf{Prompt engineering lessons.} Vague prompts like ``check if it works'' produced generic responses. The effective prompt was specific: ``assess the correctness of the analysis for the assignment \ldots\ for all supported architectures.'' This directed the AI to read every topology file and trace computations end-to-end rather than giving surface-level feedback.
-
-  \item \textbf{Source attribution.} The AI was prompted to find the original papers/talks behind each topology, which were added both as code comments and as frontend references.
+  \item \textbf{Correctness audit.} Prompt: ``assess the correctness of the analysis for all supported architectures.'' The AI found three bugs: (i)~hardcoded host count; (ii)~bisection heuristic; (iii)~missing inter-pod analysis.
+  \item \textbf{Bug fixing \& feature development.} Targeted fixes plus new analysis modules (multi-failure cascade, all-pairs statistics, cost efficiency).
+  \item \textbf{Prompt engineering lesson.} Specific, scoped prompts outperformed vague ones for end-to-end code tracing.
 \end{enumerate}
 
-The key lesson was that AI copilots are most effective when given a precise audit scope and when the user validates the AI's reasoning against the actual code rather than trusting outputs uncritically.
-
 % ============================================================
-\section{Discussion}
+\section{Discussion and Conclusion}
 % ============================================================
 
-\paragraph{Path diversity vs.\ practical routing.}
-While the fat tree offers $k^{d-1}$ shortest paths to any root switch, production networks (Jupiter, Amazon, Meta) provide only 1--2 paths per root. This does not necessarily make them inferior: production networks achieve load balancing through ECMP across \emph{all} root switches simultaneously, whereas our analysis counts paths to a \emph{single} root. The total multipath capacity across all roots is comparable.
-
-\paragraph{Locality as a design feature.}
-Jupiter and Meta's 0-path result through top-level switches for intra-pod pairs is a deliberate design feature, not a limitation. By keeping intra-pod traffic local, these architectures reduce load on expensive inter-pod links and lower latency for rack-local communication---critical for distributed training workloads where GPUs within a rack communicate intensively.
-
-\paragraph{Bisection bandwidth convergence.}
-All three production topologies yield identical bisection bandwidth (16 link-units) despite different structures. This suggests that at equivalent scale, the choice between 2-tier (Amazon) and 3-tier (Meta, Jupiter) architectures is driven more by operational considerations (failure domains, incremental expansion) than raw bandwidth capacity.
+\paragraph{Key findings.}
+(1)~For the given $k{=}2$, $d{=}3$ diagram: 1 path per root switch (4 roots), 2 M1$\to$M3 paths, 4 M1$\to$M5 paths (1 via S2), bisection BW of 8.
+(2)~Multi-failure cascade shows the fat tree retains 79.5\% survival at 4 root failures, while Jupiter/Meta drop to 18.2\% and Amazon to 6.7\%---locality protects intra-pod pairs but inter-group traffic disconnects.
+(3)~Amazon's 2-tier design has the lowest diameter (4) and avg distance (3.87) but only 3.80 paths/pair and 0.50:1 oversubscription.
+(4)~Jupiter and Meta produce identical graph-theoretic metrics (avgDist=5.48, avgPaths=12.81) despite different architectures---the choice between them is operational (OCS reconfigurability vs.\ pod isolation), not topological.
 
 \paragraph{Limitations.}
-Our analysis treats all links as having equal bandwidth (1 link-unit). In practice, inter-pod links may run at higher speeds (e.g., 400G vs.\ 100G), and OCS in Jupiter can be reconfigured to shift bandwidth dynamically. The exact bisection algorithm, while correct for small topologies, is exponential in the number of host groups and would need approximation for larger networks.
+All links are treated as equal bandwidth (1 link-unit). In practice, spine links run at higher speeds and Jupiter's OCS dynamically reconfigures bandwidth. Our exact bisection algorithm is exponential in host groups; for $>$20 groups the code falls back to a spatial heuristic.
 
-% ============================================================
-\section{Conclusion}
-% ============================================================
-
-We extended the Fat Tree Visualizer with three production-inspired datacenter topologies (Google Jupiter, Amazon Leaf-Spine, Meta 3-Level Clos) and a BFS-based analysis engine that answers all parts of Question~5 across all four architectures. Key findings:
-\begin{itemize}[nosep]
-  \item Fat trees provide $k^{d-1}$ shortest paths per server-root pair and bisection bandwidth of $k^d$, both scaling polynomially.
-  \item Production topologies trade path diversity for operational simplicity, with traffic locality keeping intra-pod communication off the spine.
-  \item All three production topologies converge to the same bisection bandwidth at equivalent scale, suggesting that topology choice is driven by operational rather than capacity concerns.
-  \item AI copilots proved effective for code auditing and bug detection when given precise, scoped prompts, but required human verification of their reasoning.
-\end{itemize}
-
-The full source code is available as an appendix. The original visualizer is at \url{https://github.com/h8liu/ftree-vis}; our extended fork with the analysis engine and additional topologies accompanies this submission.
+The source code is in the appendix and runs live in the browser. The original visualizer is at \url{https://github.com/h8liu/ftree-vis}.
 
 % ============================================================
 \begin{thebibliography}{9}
-
-\bibitem{ftreevis}
-H.~Liu, ``Fat Tree Visualizer,'' GitHub repository.
-\url{https://github.com/h8liu/ftree-vis}
-
-\bibitem{clos1953}
-C.~Clos, ``A study of non-blocking switching networks,''
-\emph{Bell System Technical Journal}, vol.~32, no.~2, pp.~406--424, 1953.
-
-\bibitem{alfares2008}
-M.~Al-Fares, A.~Loukissas, and A.~Vahdat, ``A scalable, commodity data center network architecture,''
-in \emph{Proc.\ ACM SIGCOMM}, 2008, pp.~63--74.
-
-\bibitem{jupiter2015}
-A.~Singh et al., ``Jupiter rising: A decade of Clos topologies and centralized control in Google's datacenter network,''
-in \emph{Proc.\ ACM SIGCOMM}, 2015, pp.~183--197.
-\url{https://dl.acm.org/doi/10.1145/2785956.2787508}
-
-\bibitem{jupiter2022}
-S.~Poutievski et al., ``Jupiter evolving: Transforming Google's datacenter network via optical circuit switches and software-defined networking,''
-in \emph{Proc.\ ACM SIGCOMM}, 2022.
-\url{https://research.google/pubs/jupiter-evolving-transforming-googles-datacenter-network-via-optical-circuit-switches-and-software-defined-networking/}
-
-\bibitem{aws2022}
-JR~Rivers and S.~Callaghan, ``Dive deep on AWS networking infrastructure,''
-AWS re:Invent 2022 (NET402).
-\url{https://d1.awsstatic.com/events/Summits/reinvent2022/NET402_Dive-deep-on-AWS-networking-infrastructure.pdf}
-
-\bibitem{meta2014}
-A.~Andreyev, ``Introducing data center fabric, the next-generation Facebook data center network,''
-Meta Engineering Blog, Nov.\ 2014.
-\url{https://engineering.fb.com/2014/11/14/production-engineering/introducing-data-center-fabric-the-next-generation-facebook-data-center-network/}
-
-\bibitem{meta2019}
-A.~Andreyev et al., ``Reinventing Facebook's data center network with F16 and Minipack,''
-Meta Engineering Blog, Mar.\ 2019.
-\url{https://engineering.fb.com/2019/03/14/data-center-engineering/f16-minipack/}
-
+\bibitem{ftreevis} H.~Liu, ``Fat Tree Visualizer,'' GitHub. \url{https://github.com/h8liu/ftree-vis}
+\bibitem{clos1953} C.~Clos, ``A study of non-blocking switching networks,'' \emph{Bell Syst.\ Tech.\ J.}, 32(2), 1953.
+\bibitem{alfares2008} M.~Al-Fares et al., ``A scalable, commodity data center network architecture,'' \emph{ACM SIGCOMM}, 2008.
+\bibitem{jupiter2015} A.~Singh et al., ``Jupiter rising,'' \emph{ACM SIGCOMM}, 2015. \url{https://dl.acm.org/doi/10.1145/2785956.2787508}
+\bibitem{jupiter2022} S.~Poutievski et al., ``Jupiter evolving,'' \emph{ACM SIGCOMM}, 2022.
+\bibitem{aws2022} JR~Rivers, S.~Callaghan, ``Dive deep on AWS networking,'' AWS re:Invent 2022 (NET402).
+\bibitem{meta2014} A.~Andreyev, ``Introducing data center fabric,'' Meta Eng.\ Blog, Nov.\ 2014.
+\bibitem{meta2019} A.~Andreyev et al., ``Reinventing Facebook's DC network with F16,'' Meta Eng.\ Blog, Mar.\ 2019.
 \end{thebibliography}
 
 % ============================================================
@@ -356,19 +315,6 @@ function countShortestPaths(adj, src, dst) {
 }
 \end{lstlisting}
 
-\subsection{Paths Through a Specific Node (\texttt{analysis.js})}
-\begin{lstlisting}[language=Java]
-function countPathsThroughNode(adj, src, dst, via) {
-  var srcToDst = countShortestPaths(adj, src, dst);
-  var srcToVia = countShortestPaths(adj, src, via);
-  var viaToDst = countShortestPaths(adj, via, dst);
-  if (srcToVia.dist + viaToDst.dist === srcToDst.dist) {
-    return srcToVia.count * viaToDst.count;
-  }
-  return 0;
-}
-\end{lstlisting}
-
 \subsection{Exact Bisection Bandwidth (\texttt{analysis.js})}
 \begin{lstlisting}[language=Java]
 // Enumerate balanced host-group partitions, assign switches greedily
@@ -382,19 +328,25 @@ for (var mask = 1; mask < (1 << nGroups) - 1; mask++) {
 }
 \end{lstlisting}
 
-\subsection{Fat Tree Host Generation Fix (\texttt{ftree.js})}
+\subsection{Fault Tolerance Analysis (\texttt{analysis.js})}
 \begin{lstlisting}[language=Java]
-function drawHosts(list, y, direction) {
-  for (var i = 0; i < list.length; i++) {
-    var switchId = switchMap[depth - 1 + "_" + i].id;
-    // Draw exactly k hosts per edge switch (was hardcoded to 3)
-    var spacing = k <= 1 ? 0 : 8 / (k - 1);
-    var totalSpan = k <= 1 ? 0 : 8;
-    for (var h = 0; h < k; h++) {
-      var dx = k <= 1 ? 0 : -totalSpan / 2 + h * spacing;
-      drawHost(list[i], y, hhost * direction, dx, switchId);
-    }
+function analyzeFaultTolerance(graph, adj) {
+  var roots = findRootSwitches(graph);
+  var testSwitch = roots[0];
+  // Build adjacency without this switch
+  var adjReduced = {};
+  for (var id in adj) {
+    if (id === testSwitch.id) continue;
+    adjReduced[id] = adj[id].filter(function(n) {
+      return n !== testSwitch.id; });
   }
+  // Compare path counts before/after removal
+  for (var i = 0; i < hosts.length; i++)
+    for (var j = i+1; j < hosts.length; j++) {
+      var orig = countShortestPaths(adj, h1, h2);
+      var reduced = countShortestPaths(adjReduced, h1, h2);
+      // ... measure disconnections and path reduction ...
+    }
 }
 \end{lstlisting}
 

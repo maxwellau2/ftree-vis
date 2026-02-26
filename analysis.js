@@ -420,6 +420,63 @@ function runAnalysis(graph) {
       "<p><em>Minimum cut that splits hosts into two equal halves, computed by enumerating balanced partitions of host groups.</em></p>";
   }
 
+  // ---- (d) Fault Tolerance (single failure) ----
+  html += "<h4>(d) Fault Tolerance</h4>";
+  var ftResult = analyzeFaultTolerance(graph, adj);
+  if (ftResult) {
+    html += "<p>Removing switch " + ftResult.switchId +
+      " (" + ftResult.switchType + "):</p>";
+    html += "<p>Host pairs losing all shortest paths: <strong>" +
+      ftResult.disconnectedPairs + "</strong> of " + ftResult.totalPairs + "</p>";
+    html += "<p>Avg path count change: <strong>" +
+      ftResult.avgPathReduction.toFixed(1) + "%</strong> reduction</p>";
+    html += "<p>Oversubscription ratio: <strong>" +
+      ftResult.oversubscription + "</strong></p>";
+  }
+
+  // Skip expensive all-pairs experiments for large topologies (>100 hosts)
+  var maxHostsForFullAnalysis = 100;
+
+  // ---- (e) Multi-Failure Cascade ----
+  html += "<h4>(e) Multi-Failure Cascade</h4>";
+  if (graph.hosts.length <= maxHostsForFullAnalysis) {
+    var cascade = multiFailureCascade(graph, adj);
+    if (cascade.length > 0) {
+      html += '<table class="analysis-table"><tr><th>Roots removed</th><th>Path survival</th><th>Disconnected pairs</th></tr>';
+      for (var ci = 0; ci < cascade.length; ci++) {
+        var c = cascade[ci];
+        html += "<tr><td>" + c.removed + " of " + c.totalRoots +
+          "</td><td>" + c.avgPathSurvival.toFixed(1) +
+          "%</td><td>" + c.disconnectedPairs + " / " + c.totalPairs + "</td></tr>";
+      }
+      html += "</table>";
+    }
+  } else {
+    html += "<p><em>Skipped (>" + maxHostsForFullAnalysis + " hosts). Use k&le;4 for full analysis.</em></p>";
+  }
+
+  // ---- (f) Network Statistics ----
+  html += "<h4>(f) Network Statistics</h4>";
+  if (graph.hosts.length <= maxHostsForFullAnalysis) {
+    var stats = allPairsStats(graph, adj);
+    html += "<p>Diameter (max shortest path): <strong>" + stats.diameter + "</strong></p>";
+    html += "<p>Min host-to-host distance: <strong>" + stats.minDist + "</strong></p>";
+    html += "<p>Avg host-to-host distance: <strong>" + stats.avgDist + "</strong></p>";
+    html += "<p>Avg paths per host pair: <strong>" + stats.avgPaths + "</strong></p>";
+  } else {
+    html += "<p><em>Skipped (>" + maxHostsForFullAnalysis + " hosts). Use k&le;4 for full analysis.</em></p>";
+  }
+
+  // ---- (g) Cost Efficiency ----
+  html += "<h4>(g) Cost Efficiency</h4>";
+  if (graph.hosts.length <= maxHostsForFullAnalysis) {
+    var ce = costEfficiency(graph, adj);
+    html += "<p>Avg paths per switch: <strong>" + ce.pathsPerSwitch + "</strong></p>";
+    html += "<p>Bisection BW per link: <strong>" + ce.bwPerLink + "</strong></p>";
+  } else {
+    html += "<p><em>Skipped (>" + maxHostsForFullAnalysis + " hosts). Use k&le;4 for full analysis.</em></p>";
+  }
+
   // ---- Sources ----
   var sources = topoSources(type);
   if (sources) {
@@ -427,6 +484,249 @@ function runAnalysis(graph) {
   }
 
   panel.html(html);
+}
+
+// Fault tolerance: remove the most critical switch and measure impact
+function analyzeFaultTolerance(graph, adj) {
+  if (graph.hosts.length < 2 || graph.switches.length < 1) return null;
+
+  var oversubscription = computeOversubscription(graph, adj);
+  var roots = findRootSwitches(graph);
+  var testSwitch = roots.length > 0 ? roots[0] : graph.switches[0];
+
+  var adjReduced = {};
+  for (var id in adj) {
+    if (id === testSwitch.id) continue;
+    adjReduced[id] = [];
+    for (var i = 0; i < adj[id].length; i++) {
+      if (adj[id][i] !== testSwitch.id) adjReduced[id].push(adj[id][i]);
+    }
+  }
+
+  var totalPairs = 0, disconnectedPairs = 0, totalReduction = 0;
+  var sampledHosts = sampleHostsAcrossGroups(graph, adj, 3);
+
+  for (var i = 0; i < sampledHosts.length; i++) {
+    for (var j = i + 1; j < sampledHosts.length; j++) {
+      var h1 = sampledHosts[i].id, h2 = sampledHosts[j].id;
+      var orig = countShortestPaths(adj, h1, h2);
+      var reduced = countShortestPaths(adjReduced, h1, h2);
+      totalPairs++;
+      if (reduced.count === 0 && orig.count > 0) {
+        disconnectedPairs++;
+      } else if (orig.count > 0) {
+        totalReduction += (1 - reduced.count / orig.count) * 100;
+      }
+    }
+  }
+
+  var avgReduction = totalPairs > 0 ? totalReduction / totalPairs : 0;
+
+  return {
+    switchId: testSwitch.id,
+    switchType: testSwitch.subtype || "level-" + (testSwitch.level || 0),
+    disconnectedPairs: disconnectedPairs,
+    totalPairs: totalPairs,
+    avgPathReduction: avgReduction,
+    oversubscription: oversubscription
+  };
+}
+
+// ============================================================
+// Sample hosts evenly across pods/blocks/groups so that
+// inter-group pairs are always represented.
+// Returns an array of host objects.
+// ============================================================
+function sampleHostsAcrossGroups(graph, adj, maxPerGroup) {
+  if (!maxPerGroup) maxPerGroup = 3;
+  var switchSet = {};
+  for (var i = 0; i < graph.switches.length; i++)
+    switchSet[graph.switches[i].id] = graph.switches[i];
+
+  // Group hosts by their parent ToR's pod/block attribute
+  var groups = {};  // groupKey -> [hostObj, ...]
+  for (var i = 0; i < graph.hosts.length; i++) {
+    var h = graph.hosts[i];
+    var neighbors = adj[h.id] || [];
+    var parentSw = null;
+    for (var j = 0; j < neighbors.length; j++) {
+      if (switchSet[neighbors[j]]) { parentSw = switchSet[neighbors[j]]; break; }
+    }
+    var groupKey = "default";
+    if (parentSw) {
+      if (parentSw.block !== undefined) groupKey = "b" + parentSw.block;
+      else if (parentSw.pod !== undefined) groupKey = "p" + parentSw.pod;
+      else groupKey = "tor_" + parentSw.id;
+    }
+    if (!groups[groupKey]) groups[groupKey] = [];
+    groups[groupKey].push(h);
+  }
+
+  // For fat tree: hosts grouped by ToR, but we want pod-level grouping.
+  // Re-group by pod: in fat tree k=4,d=3, edge switches are at level 2.
+  // Pod = floor(edgeSwitchIndex / k). Each edge switch has k hosts.
+  if (graph.metadata.type === "fattree") {
+    groups = {};
+    var k = graph.metadata.k;
+    for (var i = 0; i < graph.hosts.length; i++) {
+      // Pod index: each pod has k edge switches, each with k hosts = k^2 hosts per pod
+      var podIdx = Math.floor(i / (k * k));
+      var key = "pod" + podIdx;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(graph.hosts[i]);
+    }
+  }
+
+  // Pick up to maxPerGroup hosts from each group
+  var sampled = [];
+  for (var key in groups) {
+    var g = groups[key];
+    var n = Math.min(g.length, maxPerGroup);
+    for (var i = 0; i < n; i++) sampled.push(g[i]);
+  }
+  return sampled;
+}
+
+// ============================================================
+// Multi-failure cascade: progressively remove 1..N root switches
+// Returns array of { removed, avgPathSurvival%, disconnectedPairs }
+// ============================================================
+function multiFailureCascade(graph, adj) {
+  var roots = findRootSwitches(graph);
+  if (roots.length === 0) return [];
+  var sampledHosts = sampleHostsAcrossGroups(graph, adj, 3);
+  var results = [];
+
+  // Compute baseline total paths using cross-group sampled hosts
+  var baselinePaths = [];
+  for (var i = 0; i < sampledHosts.length; i++) {
+    for (var j = i + 1; j < sampledHosts.length; j++) {
+      baselinePaths.push(countShortestPaths(adj, sampledHosts[i].id, sampledHosts[j].id));
+    }
+  }
+
+  for (var nFail = 1; nFail <= roots.length; nFail++) {
+    // Remove first nFail root switches
+    var removedSet = {};
+    for (var r = 0; r < nFail; r++) removedSet[roots[r].id] = true;
+
+    var adjR = {};
+    for (var id in adj) {
+      if (removedSet[id]) continue;
+      adjR[id] = [];
+      for (var ki = 0; ki < adj[id].length; ki++) {
+        if (!removedSet[adj[id][ki]]) adjR[id].push(adj[id][ki]);
+      }
+    }
+
+    var totalSurvival = 0, disconnected = 0, pairIdx = 0;
+    for (var i = 0; i < sampledHosts.length; i++) {
+      for (var j = i + 1; j < sampledHosts.length; j++) {
+        var orig = baselinePaths[pairIdx++];
+        var reduced = countShortestPaths(adjR, sampledHosts[i].id, sampledHosts[j].id);
+        if (reduced.count === 0 && orig.count > 0) {
+          disconnected++;
+        } else if (orig.count > 0) {
+          totalSurvival += (reduced.count / orig.count) * 100;
+        }
+      }
+    }
+    var totalPairs = pairIdx;
+    var connectedPairs = totalPairs - disconnected;
+    var avgSurvival = connectedPairs > 0 ? totalSurvival / totalPairs : 0;
+
+    results.push({
+      removed: nFail,
+      totalRoots: roots.length,
+      avgPathSurvival: avgSurvival,
+      disconnectedPairs: disconnected,
+      totalPairs: totalPairs
+    });
+  }
+  return results;
+}
+
+// ============================================================
+// All-pairs shortest path statistics: diameter, avg path length
+// ============================================================
+function allPairsStats(graph, adj) {
+  var hosts = graph.hosts;
+  var totalDist = 0, totalPaths = 0, maxDist = 0, minDist = Infinity;
+  var pairCount = 0;
+  var totalPathCount = 0;
+
+  for (var i = 0; i < hosts.length; i++) {
+    for (var j = i + 1; j < hosts.length; j++) {
+      var r = countShortestPaths(adj, hosts[i].id, hosts[j].id);
+      if (r.dist > 0) {
+        totalDist += r.dist;
+        totalPathCount += r.count;
+        if (r.dist > maxDist) maxDist = r.dist;
+        if (r.dist < minDist) minDist = r.dist;
+        pairCount++;
+      }
+    }
+  }
+
+  return {
+    diameter: maxDist,
+    minDist: minDist === Infinity ? 0 : minDist,
+    avgDist: pairCount > 0 ? (totalDist / pairCount).toFixed(2) : 0,
+    avgPaths: pairCount > 0 ? (totalPathCount / pairCount).toFixed(2) : 0,
+    totalPairs: pairCount
+  };
+}
+
+// ============================================================
+// Cost-efficiency: paths-per-switch, bisection-BW-per-link
+// ============================================================
+function costEfficiency(graph, adj) {
+  var hosts = graph.hosts;
+  var totalPathCount = 0, pairCount = 0;
+  for (var i = 0; i < hosts.length; i++) {
+    for (var j = i + 1; j < hosts.length; j++) {
+      var r = countShortestPaths(adj, hosts[i].id, hosts[j].id);
+      if (r.count > 0) { totalPathCount += r.count; pairCount++; }
+    }
+  }
+  var avgPaths = pairCount > 0 ? totalPathCount / pairCount : 0;
+  var bw = computeBisectionBW(graph);
+
+  return {
+    pathsPerSwitch: (avgPaths / graph.switches.length).toFixed(3),
+    bwPerLink: (bw / graph.edges.length).toFixed(3),
+    totalSwitches: graph.switches.length,
+    totalLinks: graph.edges.length,
+    bisectionBW: bw,
+    avgPaths: avgPaths.toFixed(2)
+  };
+}
+
+// Compute oversubscription ratio at the edge layer
+function computeOversubscription(graph, adj) {
+  var switchSet = {};
+  for (var i = 0; i < graph.switches.length; i++)
+    switchSet[graph.switches[i].id] = true;
+  var hostSet = {};
+  for (var i = 0; i < graph.hosts.length; i++)
+    hostSet[graph.hosts[i].id] = true;
+
+  // Find edge switches (switches connected to at least one host)
+  var totalDown = 0, totalUp = 0;
+  for (var i = 0; i < graph.switches.length; i++) {
+    var sid = graph.switches[i].id;
+    var neighbors = adj[sid] || [];
+    var down = 0, up = 0;
+    for (var j = 0; j < neighbors.length; j++) {
+      if (hostSet[neighbors[j]]) down++;
+      else if (switchSet[neighbors[j]]) up++;
+    }
+    if (down > 0) { totalDown += down; totalUp += up; }
+  }
+  if (totalUp === 0) return "N/A";
+  var ratio = totalDown / totalUp;
+  return ratio === 1 ? "1:1 (non-oversubscribed)" :
+    ratio.toFixed(2) + ":1";
 }
 
 function topoSources(type) {

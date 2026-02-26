@@ -181,3 +181,25 @@ ul.sources li {
 ul.sources a {
     color: #06c;
 }
+
+/* Analysis data tables */
+.analysis-table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 0.04in 0;
+    font-size: 0.11in;
+}
+.analysis-table th,
+.analysis-table td {
+    border: 1px solid #ccc;
+    padding: 2px 5px;
+    text-align: center;
+}
+.analysis-table th {
+    background: #e8e8e0;
+    font-weight: bold;
+    color: #333;
+}
+.analysis-table tr:nth-child(even) {
+    background: #f4f4ec;
+}
